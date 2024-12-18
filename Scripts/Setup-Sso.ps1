@@ -95,8 +95,7 @@ if ($IsMacOS -or $IsLinux) {
     $aws_config_dir = "~/.aws/"
 
 } elseif ($IsWindows) {
-    $username = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-    $aws_config_dir = "C:\Users\$($username)\.aws"
+    $aws_config_dir = "$($env:USERPROFILE)\.aws"
 
 }
 
