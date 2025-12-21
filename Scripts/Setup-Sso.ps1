@@ -165,7 +165,6 @@ if ($true -eq $set_aws_config) {
     $aws_accounts = aws sso list-accounts --region $SsoRegion --access-token "$(Get-AwsCliToken)"
 
     $aws_accounts = $aws_accounts | ConvertFrom-Json
-    $aws_accounts_number_digits = $aws_accounts.accountList.Length.ToString().Length
     
     if ($aws_accounts.accountList.Length -ge 1) {
         Write-Host "Found $($aws_accounts.accountList.Length) that you have access to. Getting Roles." -ForegroundColor Green
@@ -176,11 +175,16 @@ if ($true -eq $set_aws_config) {
             $aws_account_info = $_
 
             $aws_account_counter += 1
-            $aws_account_counter_display = "{0:d$($aws_accounts_number_digits)}" -f $aws_account_counter
-
-
-            Write-Host "`n[$($aws_account_counter_display)/$($aws_accounts.accountList.Length)] Working on AWS Account :: Account ID: $($aws_account_info.accountId)"
+            $percent_complete     = [Math]::Round($aws_account_counter / $aws_accounts.accountList.Length * 100, 2)
             
+            $progress = @{
+                Activity        = "Working on AWS Account :: Account ID: $($aws_account_info.accountId) :: $($aws_account_info.accountName)"
+                Status          = "$($percent_complete)% Complete"
+                PercentComplete = $percent_complete
+            }
+
+            Write-Progress @progress
+
             $aws_account_roles = aws sso list-account-roles --region $SsoRegion --access-token "$(Get-AwsCliToken)" --account-id $aws_account_info.accountId
 
             $aws_account_roles = $aws_account_roles | ConvertFrom-Json
@@ -228,6 +232,8 @@ if ($true -eq $set_aws_config) {
     
     }
 
+    Write-Progress -Completed
+
     # Get Roles for each Account
 
 } else {
@@ -245,46 +251,59 @@ $profiles = aws configure list-profiles
 $profiles = $profiles | Sort-Object
 
 $number_of_profiles = $profiles.Length
-$number_of_profiles_digits = $number_of_profiles.ToString().Length
 
 $loop_counter_profile = 0
 
-foreach ($profile in $profiles) {
+foreach ($aws_profile in $profiles) {
     $loop_counter_profile += 1
-    $loop_counter_display = "{0:d$($number_of_profiles_digits)}" -f $loop_counter_profile
+    $percent_complete      = [Math]::Round($loop_counter_profile / $number_of_profiles * 100, 2)
     
-    $iam_roles = aws iam list-roles --profile $profile
+    $iam_roles = aws iam list-roles --profile $aws_profile
 
     $iam_roles = $iam_roles | ConvertFrom-Json
+
+    $progress = @{
+        Activity        = "Verifying Profile :: $($aws_profile)"
+        Status          = "$($percent_complete)% Complete"
+        PercentComplete = $percent_complete
+    }
+
+    Write-Progress @progress
 
     if ($iam_roles.Length -eq 1) {
         $iam_roles_list = $iam_roles.Roles
 
         if ($iam_roles_list.Length -ge 1) {
-            Write-Host "[$($loop_counter_display)/$($number_of_profiles)] Profile Verfied :: $($profile)" -ForegroundColor Green
+            Write-Host "Profile Verfied :: $($aws_profile)" -ForegroundColor Green
 
         } else {
-            Write-Host "[$($loop_counter_display)/$($number_of_profiles)] Profile Verfied :: $($profile) :: Message: You may not have permissions to list IAM roles" -ForegroundColor Yellow
+            Write-Host "Profile Verfied :: $($aws_profile) :: Message: You may not have permissions to list IAM roles" -ForegroundColor Yellow
 
         }
 
     } elseif($LASTEXITCODE) {
-        Write-Host "[$($loop_counter_display)/$($number_of_profiles)] Profile Verfied :: $($profile) :: Message: You may not have permissions to list IAM roles" -ForegroundColor Yellow
+        Write-Host "Profile Verfied :: $($aws_profile) :: Message: You may not have permissions to list IAM roles" -ForegroundColor Yellow
 
     } else {
-        Write-Host "[$($loop_counter_display)/$($number_of_profiles)] Profile Verification Failed :: $($profile)" -ForegroundColor Red
+        Write-Host "Profile Verification Failed :: $($aws_profile)" -ForegroundColor Red
 
     }
 
 }
 
-Write-Host "`n`nAWS CLI Config has been successfully configured to use SSO!"
-Write-Host "`nWhen calling AWS CLI commands, ensure that you login before using:"
-Write-Host "`taws sso login --sso-session $($SsoSessionName)"
-Write-Host "`n`nOr call the included PowerShell helper script:"
-Write-Host "`tPS> /path/to/awscli-wrapper-powershell/Scripts/Login-Sso.ps1 -SsoSessionName $($SsoSessionName)"
-Write-Host "`nExample Command Usage (After logging in with the above CLI command or PowerShell script)"
-Write-Host "`taws ec2 describe-instances --region $($SsoRegion) --profile $((aws configure list-profiles) | Get-Random)"
+Write-Progress -Completed
 
 $emoji = "`u{1F600}"
-Write-Host "`n`n$($emoji * 3) Happy Hacking $($emoji * 3)`n`n"
+
+$console_message = @"
+`nAWS CLI Config has been successfully configured to use SSO!
+When calling AWS CLI commands, ensure that you login before using:
+aws sso login --sso-session $($SsoSessionName)
+`nOr call the included PowerShell helper script:
+`tPS> /path/to/awscli-wrapper-powershell/Scripts/Login-Sso.ps1 -SsoSessionName $($SsoSessionName)
+Example Command Usage (After logging in with the above CLI command or PowerShell script)
+`taws ec2 describe-instances --region $($SsoRegion) --profile $((aws configure list-profiles) | Get-Random)
+`n$($emoji * 3) Happy Hacking $($emoji * 3)`n`n
+"@
+
+Write-Host $console_message
